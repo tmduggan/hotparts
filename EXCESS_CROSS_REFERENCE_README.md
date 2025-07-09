@@ -24,6 +24,7 @@ The system creates `Master_Matches_Data.xlsx` with the following columns:
 | **Description** | Part description | Master hot parts |
 | **Excess_Filename** | Name of excess file | Excess file |
 | **Excess_QTY** | Available quantity | Excess file |
+| **Target_Price** | Price with 12% markup | Excess file (if available) |
 
 ## 🔍 How It Works
 
@@ -39,12 +40,16 @@ The system creates `Master_Matches_Data.xlsx` with the following columns:
 ### 3. **Column Detection**
 - **MPN Column**: Automatically finds columns containing "MPN"
 - **QTY Column**: Finds quantity columns ("QTY", "Stock QTY", "Quantity")
+- **Price Column**: Finds price columns ("Price", "Target", "Cost")
 
 ### 4. **Data Cleaning**
 - **MPN Values**: Strips whitespace and normalizes
 - **QTY Values**: Removes commas, spaces, converts to integers
   - `" 2,643"` → `2643`
   - `"1,000"` → `1000`
+- **Price Values**: Removes formatting, applies 12% markup
+  - `"1.00"` → `1.12`
+  - `"$2.50"` → `2.80`
 
 ### 5. **Cross-Reference Matching**
 - Compares each MPN from excess files against master hot parts data
@@ -121,6 +126,7 @@ Product_Class: Interface
 Description: 3.2T 32X100G MULTI LAYER SWITCH
 Excess_Filename: 2025.07.08 Vicky Zhang - CELIPC-S.xlsx
 Excess_QTY: 1898
+Target_Price: 1.12 (if price data available)
 ```
 
 ### Processing Summary
@@ -155,6 +161,9 @@ Automatically skips sheets containing:
 1. "QTY"
 2. "Stock QTY" 
 3. Any column containing "qty", "quantity", or "stock"
+**Price Columns**: Priority order:
+1. "Price"
+2. Any column containing "price", "target", or "cost"
 
 ## 📝 Logging
 

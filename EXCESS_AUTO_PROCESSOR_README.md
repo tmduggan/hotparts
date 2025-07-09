@@ -72,10 +72,11 @@ python excess_auto_processor.py \
 ### **Processing Steps**
 1. **Loads** master hot parts data (`Master_Hot_Parts_Data.xlsx`)
 2. **Finds** relevant sheets (ignores 'match'/'matching' sheets)
-3. **Extracts** MPN and QTY data from excess files
-4. **Cross-references** with master hot parts data
-5. **Updates** `Master_Matches_Data.xlsx` with new matches
-6. **Moves** processed files to `processed_XS/` directory
+3. **Extracts** MPN, QTY, and Price data from excess files
+4. **Applies** 12% markup to price data (if available)
+5. **Cross-references** with master hot parts data
+6. **Updates** `Master_Matches_Data.xlsx` with new matches
+7. **Moves** processed files to `processed_XS/` directory
 
 ### **Output: Master Matches Data**
 | Column | Description |
@@ -88,6 +89,7 @@ python excess_auto_processor.py \
 | **Description** | Part description |
 | **Excess_Filename** | Source excess file |
 | **Excess_QTY** | Available quantity |
+| **Target_Price** | Price with 12% markup (if available) |
 
 ## 🎯 Use Cases
 

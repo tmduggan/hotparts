@@ -102,6 +102,40 @@ class EnhancedExcessProcessor:
         
         return None
     
+    def find_price_column(self, df):
+        """Find the price column in the dataframe"""
+        price_columns = []
+        for col in df.columns:
+            col_str = str(col).lower()
+            if any(keyword in col_str for keyword in ['price', 'target', 'cost']):
+                price_columns.append(col)
+        
+        # Prefer 'Price' over other variations
+        if 'Price' in price_columns:
+            return 'Price'
+        elif price_columns:
+            return price_columns[0]
+        
+        return None
+    
+    def clean_price_value(self, price_value):
+        """Clean price value and apply 12% markup"""
+        if pd.isna(price_value):
+            return None
+        
+        # Convert to string and remove any formatting
+        price_str = str(price_value).strip()
+        price_str = price_str.replace('$', '').replace(',', '').replace(' ', '')
+        
+        # Try to convert to number
+        try:
+            base_price = float(price_str)
+            # Apply 12% markup
+            target_price = base_price * 1.12
+            return round(target_price, 4)  # Round to 4 decimal places
+        except (ValueError, TypeError):
+            return None
+    
     def process_excess_file(self, file_path):
         """Process a single excess file"""
         if file_path in self.processed_files:
@@ -118,16 +152,17 @@ class EnhancedExcessProcessor:
         
         logger.info(f"Using sheet: {sheet_name} (shape: {df.shape})")
         
-        # Find MPN and QTY columns
+        # Find MPN, QTY, and Price columns
         mpn_cols = [col for col in df.columns if 'mpn' in str(col).lower()]
         qty_col = self.find_qty_column(df)
+        price_col = self.find_price_column(df)
         
         if not mpn_cols:
             logger.error(f"No MPN column found in {file_path}")
             return
         
         mpn_col = mpn_cols[0]
-        logger.info(f"MPN column: {mpn_col}, QTY column: {qty_col}")
+        logger.info(f"MPN column: {mpn_col}, QTY column: {qty_col}, Price column: {price_col}")
         
         # Process each row
         matches_found = 0
@@ -149,6 +184,11 @@ class EnhancedExcessProcessor:
                 if qty_col:
                     qty_value = self.clean_qty_value(row[qty_col])
                 
+                # Get target price value (with 12% markup)
+                target_price = None
+                if price_col:
+                    target_price = self.clean_price_value(row[price_col])
+                
                 # Create match records for each master match
                 for _, master_row in master_matches.iterrows():
                     match_record = {
@@ -159,7 +199,8 @@ class EnhancedExcessProcessor:
                         'Product_Class': master_row['Product_Class'],
                         'Description': master_row['Description'],
                         'Excess_Filename': os.path.basename(file_path),
-                        'Excess_QTY': qty_value
+                        'Excess_QTY': qty_value,
+                        'Target_Price': target_price
                     }
                     self.matches_data.append(match_record)
                     matches_found += 1
@@ -234,6 +275,11 @@ class EnhancedExcessProcessor:
             
             # Create dataframe and remove duplicates
             matches_df = pd.DataFrame(all_matches)
+            
+            # Ensure Target_Price column exists (for backward compatibility)
+            if 'Target_Price' not in matches_df.columns:
+                matches_df['Target_Price'] = None
+            
             matches_df = matches_df.drop_duplicates()
             matches_df = matches_df.sort_values(['MPN', 'Weekly_Hot_Parts_Date'])
             
