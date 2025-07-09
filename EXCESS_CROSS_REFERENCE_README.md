@@ -29,12 +29,17 @@ The system creates `Master_Matches_Data.xlsx` with the following columns:
 ## 🔍 How It Works
 
 ### 1. **File Detection**
-- Automatically finds excess files containing "Kelly Chen" or "Vicky Zhang" in filename
+- Automatically finds excess files containing:
+  - "Kelly Chen" in filename
+  - "Vicky Zhang" in filename  
+  - "Micron stock" in filename
+  - "BCM Excess" in filename
 - Supports `.xlsx` format files
 
 ### 2. **Sheet Selection**
 - **Ignores** sheets with "match" or "matching" in the name
-- **Finds** relevant data sheets (often named "Raw Data", "Stock List", etc.)
+- **Ignores** "Global" tab for Micron stock files
+- **Finds** relevant data sheets (often named "Raw Data", "Stock List", "BCM Excess", etc.)
 - **Validates** sheets contain MPN column
 
 ### 3. **Column Detection**
@@ -112,6 +117,23 @@ processor.create_master_matches_file()
 │   ├── QTY ✅
 │   └── Item Description
 └── Matching (ignored)
+
+Micron stock.xlsx
+├── Raw Data (relevant sheet)
+│   ├── MFG
+│   ├── MPN ✅
+│   ├── Quantity ✅
+│   ├── Market Price ✅
+│   └── Description
+└── Global (ignored)
+
+BCM Excess - 2025.06.23 to 2025.07.07.xlsx
+└── BCM Excess (single sheet)
+    ├── Offer Date
+    ├── MPN ✅
+    ├── Quantity ✅
+    ├── Unit Cost ✅
+    └── Excess Contact
 ```
 
 ## 📈 Example Results
@@ -131,15 +153,19 @@ Target_Price: 1.12 (if price data available)
 
 ### Processing Summary
 ```
-Found 2 excess files:
+Found 4 excess files:
   - 2025.07.08 Kelly Chen - TNR852.xlsx
   - 2025.07.08 Vicky Zhang - CELIPC-S.xlsx
+  - Micron stock.xlsx
+  - BCM Excess - 2025.06.23 to 2025.07.07.xlsx
 
 Processing results:
   ✅ Kelly Chen: 29 matches found
   ✅ Vicky Zhang: 603 matches found
-  📊 Total matches: 632
-  🔍 Unique MPNs: 108
+  ✅ Micron stock: 12 matches found
+  ✅ BCM Excess: 6 matches found
+  📊 Total matches: 650
+  🔍 Unique MPNs: 119
 ```
 
 ## 🔧 Configuration

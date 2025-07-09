@@ -44,9 +44,12 @@ class ExcessFileHandler(FileSystemEventHandler):
         logger.info("Excess file handler initialized")
     
     def is_excess_file(self, filename):
-        """Check if file is an excess file (contains Kelly Chen or Vicky Zhang)"""
+        """Check if file is an excess file (contains Kelly Chen, Vicky Zhang, Micron stock, or BCM Excess)"""
         return (filename.endswith('.xlsx') and 
-                ('Kelly Chen' in filename or 'Vicky Zhang' in filename))
+                ('Kelly Chen' in filename or 
+                 'Vicky Zhang' in filename or
+                 'Micron stock' in filename or
+                 'BCM Excess' in filename))
     
     def process_excess_file(self, file_path, filename):
         """Process a single excess file"""

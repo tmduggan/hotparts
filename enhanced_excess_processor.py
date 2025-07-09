@@ -64,11 +64,17 @@ class EnhancedExcessProcessor:
         """Find the relevant sheet in an excess file (ignoring 'match' sheets)"""
         try:
             xl_file = pd.ExcelFile(file_path)
+            filename = os.path.basename(file_path)
             
             for sheet_name in xl_file.sheet_names:
                 # Skip sheets with 'match' or 'matching' in the name
                 if any(keyword in sheet_name.lower() for keyword in ['match', 'matching']):
                     logger.info(f"Skipping sheet '{sheet_name}' - contains 'match' or 'matching'")
+                    continue
+                
+                # Skip 'Global' tab for Micron files
+                if 'Micron stock' in filename and sheet_name.lower() == 'global':
+                    logger.info(f"Skipping sheet '{sheet_name}' - Global tab for Micron file")
                     continue
                 
                 # Check if this sheet has MPN column
@@ -212,7 +218,12 @@ class EnhancedExcessProcessor:
         """Find excess files in the directory"""
         excess_files = []
         for file in os.listdir(directory):
-            if file.endswith('.xlsx') and ('Kelly Chen' in file or 'Vicky Zhang' in file):
+            if file.endswith('.xlsx') and (
+                'Kelly Chen' in file or 
+                'Vicky Zhang' in file or
+                'Micron stock' in file or
+                'BCM Excess' in file
+            ):
                 excess_files.append(file)
         
         return excess_files

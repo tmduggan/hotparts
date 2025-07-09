@@ -36,6 +36,8 @@ python excess_auto_processor.py
 Simply drag and drop excess files into the `unprocessed_XS/` directory:
 - Files containing "Kelly Chen" in filename
 - Files containing "Vicky Zhang" in filename
+- Files containing "Micron stock" in filename
+- Files containing "BCM Excess" in filename
 - `.xlsx` format only
 
 ### 3. **Automatic Processing**
@@ -66,12 +68,16 @@ python excess_auto_processor.py \
 
 ### **File Detection**
 - Monitors `unprocessed_XS/` directory for new files
-- Automatically detects excess files by filename pattern
+- Automatically detects excess files by filename pattern:
+  - "Kelly Chen" files
+  - "Vicky Zhang" files
+  - "Micron stock" files
+  - "BCM Excess" files
 - Ignores non-excess files
 
 ### **Processing Steps**
 1. **Loads** master hot parts data (`Master_Hot_Parts_Data.xlsx`)
-2. **Finds** relevant sheets (ignores 'match'/'matching' sheets)
+2. **Finds** relevant sheets (ignores 'match'/'matching' sheets, ignores 'Global' for Micron files)
 3. **Extracts** MPN, QTY, and Price data from excess files
 4. **Applies** 12% markup to price data (if available)
 5. **Cross-references** with master hot parts data
