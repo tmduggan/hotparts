@@ -143,7 +143,7 @@ class EnhancedExcessProcessor:
             return None
     
     def process_excess_file(self, file_path):
-        """Process a single excess file"""
+        """Process a single excess file with simplified validation"""
         if file_path in self.processed_files:
             logger.info(f"File already processed: {file_path}")
             return
@@ -153,19 +153,23 @@ class EnhancedExcessProcessor:
         # Find the relevant sheet
         sheet_name, df = self.find_relevant_sheet(file_path)
         if sheet_name is None:
-            logger.warning(f"No relevant sheet found in {file_path}")
-            return
+            raise ValueError(f"No relevant sheet found in {file_path}")
         
         logger.info(f"Using sheet: {sheet_name} (shape: {df.shape})")
         
-        # Find MPN, QTY, and Price columns
+        # Find MPN and QTY columns (required)
         mpn_cols = [col for col in df.columns if 'mpn' in str(col).lower()]
         qty_col = self.find_qty_column(df)
-        price_col = self.find_price_column(df)
         
+        # Validate required columns
         if not mpn_cols:
-            logger.error(f"No MPN column found in {file_path}")
-            return
+            raise ValueError(f"No MPN column found in {file_path}")
+        
+        if not qty_col:
+            raise ValueError(f"No quantity column found in {file_path}")
+        
+        # Find Price column (optional)
+        price_col = self.find_price_column(df)
         
         mpn_col = mpn_cols[0]
         logger.info(f"MPN column: {mpn_col}, QTY column: {qty_col}, Price column: {price_col}")
@@ -185,12 +189,10 @@ class EnhancedExcessProcessor:
             master_matches = self.master_data[self.master_data['MPN'] == mpn_clean]
             
             if not master_matches.empty:
-                # Get quantity value
-                qty_value = 0
-                if qty_col:
-                    qty_value = self.clean_qty_value(row[qty_col])
+                # Get quantity value (required)
+                qty_value = self.clean_qty_value(row[qty_col])
                 
-                # Get target price value (with 12% markup)
+                # Get target price value (optional, with 12% markup)
                 target_price = None
                 if price_col:
                     target_price = self.clean_price_value(row[price_col])
@@ -215,15 +217,12 @@ class EnhancedExcessProcessor:
         self.processed_files.add(file_path)
     
     def find_excess_files(self, directory="."):
-        """Find excess files in the directory"""
+        """Find excess files in the directory (files that don't contain 'Weekly Hot Parts')"""
         excess_files = []
         for file in os.listdir(directory):
-            if file.endswith('.xlsx') and (
-                'Kelly Chen' in file or 
-                'Vicky Zhang' in file or
-                'Micron stock' in file or
-                'BCM Excess' in file
-            ):
+            if (file.endswith('.xlsx') and 
+                'Weekly Hot Parts' not in file and
+                not file.endswith('.error')):
                 excess_files.append(file)
         
         return excess_files

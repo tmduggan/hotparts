@@ -17,16 +17,16 @@ An intelligent, automated system for processing "Weekly Hot Parts List" Excel fi
 
 ```
 HotParts/
-├── unprocessed/                    # 🎯 Drop hot parts Excel files here
-├── processed/                      # ✅ Processed hot parts files
-├── unprocessed_XS/                 # 🎯 Drop excess inventory files here
-├── processed_XS/                   # ✅ Processed excess files
-├── enhanced_auto_processor.py      # 🤖 Hot parts processor with duplicate detection
-├── excess_auto_processor.py        # 🤖 Excess inventory processor
+├── unprocessed/                    # 🎯 Drop ALL Excel files here (hot parts + excess)
+├── processed/                      # ✅ All processed files go here
+├── unified_auto_processor.py       # 🤖 Unified processor for both file types
+├── enhanced_auto_processor.py      # 🤖 Legacy hot parts processor
+├── excess_auto_processor.py        # 🤖 Legacy excess processor
 ├── hot_parts_parser.py            # 🔧 Core hot parts parsing engine
 ├── enhanced_excess_processor.py    # 🔧 Core excess processing engine
-├── start_enhanced_processor.sh     # 🚀 Hot parts startup script
-├── start_excess_processor.sh       # 🚀 Excess startup script
+├── start_unified_processor.sh      # 🚀 Unified startup script (recommended)
+├── start_enhanced_processor.sh     # 🚀 Legacy hot parts startup script
+├── start_excess_processor.sh       # 🚀 Legacy excess startup script
 ├── requirements.txt               # 📦 Python dependencies
 ├── .gitignore                     # 🚫 Excludes Excel files and logs
 ├── Master_Hot_Parts_Data.xlsx     # 📊 Consolidated hot parts data
@@ -37,7 +37,6 @@ HotParts/
 ├── query_interface.py             # 🔍 Database query interface
 ├── migrate_to_database.py         # 🔄 Excel to database migration
 ├── test_database.py               # 🧪 Database functionality tests
-├── demo_random_parts.py           # 🎯 Random parts selection demo
 └── DATABASE_README.md             # 📖 Database system documentation
 ```
 
@@ -54,25 +53,21 @@ cd hotparts
 pip install -r requirements.txt
 ```
 
-### 3. Start the Processors
+### 3. Start the Unified Processor (Recommended)
 
-#### Hot Parts Processing
 ```bash
-./start_enhanced_processor.sh
-```
-
-#### Excess Inventory Processing
-```bash
-./start_excess_processor.sh
+./start_unified_processor.sh
 ```
 
 ### 4. Drop Files for Processing
 
-#### Hot Parts Files
-Drag and drop "Weekly Hot Parts List" Excel files into the `unprocessed/` directory.
+#### All Excel Files
+Drag and drop **all** Excel files into the `unprocessed/` directory:
 
-#### Excess Inventory Files
-Drag and drop excess inventory files (containing "Kelly Chen", "Vicky Zhang", "Micron stock", or "BCM Excess") into the `unprocessed_XS/` directory.
+- **Hot Parts Files**: Files containing "Weekly Hot Parts" in the filename
+- **Excess Files**: Files that do NOT contain "Weekly Hot Parts" in the filename
+
+The system automatically detects file type and processes accordingly.
 
 ### 5. Database Operations (Optional)
 
@@ -147,60 +142,67 @@ File B (2025.06.30): Tab "2025.07.07" → MPN "ABC123", Reqs_Count=8
 Result: Both records kept (different dates = new datapoints)
 ```
 
-## 🔄 How the Processors Work
+## 🔄 How the Unified Processor Works
 
-### Hot Parts Processor
+### File Type Detection
+- **Hot Parts Files**: Filename contains "Weekly Hot Parts"
+- **Excess Files**: Filename does NOT contain "Weekly Hot Parts"
+
+### Processing Flow
 1. **Monitors** `unprocessed/` directory for new files
-2. **Detects** files containing "Weekly Hot Parts List"
-3. **Parses** date-based tabs and pivot tabs
-4. **Removes** duplicates based on MPN + Date combination
-5. **Updates** `Master_Hot_Parts_Data.xlsx` and `Master_Pivot_Data.xlsx`
-6. **Moves** processed files to `processed/` directory
+2. **Detects** file type based on filename
+3. **Routes** to appropriate processor:
+   - Hot parts → `hot_parts_parser.py`
+   - Excess → `enhanced_excess_processor.py`
+4. **Handles** duplicates and validation
+5. **Updates** master files accordingly
+6. **Moves** successful files to `processed/` directory
+7. **Keeps** failed files in `unprocessed/` with `.error` files
 
-### Excess Inventory Processor
-1. **Monitors** `unprocessed_XS/` directory for new files
-2. **Detects** files containing "Kelly Chen", "Vicky Zhang", "Micron stock", or "BCM Excess"
-3. **Finds** relevant sheets (ignores 'match'/'matching' sheets, ignores 'Global' for Micron)
-4. **Extracts** MPN, QTY, and Price data
-5. **Applies** 12% markup to price data (if available)
-6. **Cross-references** with master hot parts data
-7. **Updates** `Master_Matches_Data.xlsx` with new matches
-8. **Moves** processed files to `processed_XS/` directory
+### Error Handling
+- **Failed files** stay in `unprocessed/` directory
+- **Error details** written to `.error` files (e.g., `file.xlsx.error`)
+- **Processing continues** for other files
 
 ## 🛠️ Usage Options
 
-### Enhanced Auto Processor (Hot Parts)
+### Unified Auto Processor (Recommended)
 ```bash
-./start_enhanced_processor.sh
+./start_unified_processor.sh
 ```
 
-### Excess Auto Processor
+### Legacy Processors (Separate)
 ```bash
+# Hot parts only
+./start_enhanced_processor.sh
+
+# Excess only  
 ./start_excess_processor.sh
 ```
 
 ### Direct Python Commands
 ```bash
-# Hot parts processing
-python enhanced_auto_processor.py
+# Unified processing (recommended)
+python unified_auto_processor.py
 
-# Excess processing
-python excess_auto_processor.py
+# Legacy separate processing
+python enhanced_auto_processor.py  # Hot parts only
+python excess_auto_processor.py    # Excess only
 ```
 
 ### Custom Directories
 ```bash
-# Hot parts with custom directories
-python enhanced_auto_processor.py \
+# Unified with custom directories
+python unified_auto_processor.py \
   --unprocessed /path/to/unprocessed \
   --processed /path/to/processed \
   --output /path/to/output
 
-# Excess with custom directories
-python excess_auto_processor.py \
-  --unprocessed unprocessed_XS \
-  --processed processed_XS \
-  --output .
+# Legacy with custom directories
+python enhanced_auto_processor.py \
+  --unprocessed /path/to/unprocessed \
+  --processed /path/to/processed \
+  --output /path/to/output
 ```
 
 ### Batch Processing
@@ -258,10 +260,10 @@ Edit `config.py` to customize:
 - Output file names
 - Data cleaning options
 
-### File Patterns
-The system automatically detects files containing:
-- **Hot Parts**: "Weekly Hot Parts List" in filename
-- **Excess**: "Kelly Chen", "Vicky Zhang", "Micron stock", or "BCM Excess" in filename
+### File Type Detection
+The system automatically detects file types based on filename:
+- **Hot Parts**: Contains "Weekly Hot Parts" in filename
+- **Excess**: Does NOT contain "Weekly Hot Parts" in filename
 - **Format**: `.xlsx` or `.xls` files
 
 ### Sheet Filtering
@@ -313,14 +315,14 @@ The system automatically detects files containing:
 ## 🎯 Use Cases
 
 ### Daily Workflow
-1. Start both processors: `./start_enhanced_processor.sh` & `./start_excess_processor.sh`
-2. Drop new Excel files into respective `unprocessed/` directories
+1. Start unified processor: `./start_unified_processor.sh`
+2. Drop all Excel files into `unprocessed/` directory
 3. Monitor processing via log files
 4. Use updated master files for analysis
 
 ### Batch Processing
-1. Copy multiple files to respective `unprocessed/` directories
-2. Start auto processors
+1. Copy multiple files to `unprocessed/` directory
+2. Start unified processor
 3. Monitor progress via log files
 4. Check master files for consolidated data
 
@@ -335,12 +337,13 @@ The system automatically detects files containing:
 ### Common Issues
 
 **Files not being processed:**
-- Check that filenames contain expected patterns
+- Check that filenames contain "Weekly Hot Parts" for hot parts files
 - Verify files have `.xlsx` or `.xls` extension
+- Check for `.error` files in `unprocessed/` directory
 - Check log files for error messages
 
 **Processing errors:**
-- Look for `_ERROR` files in processed directories
+- Look for `.error` files in `unprocessed/` directory
 - Check log files for specific error details
 - Verify Excel file structure matches expected format
 
@@ -383,4 +386,4 @@ This project is open source and available under the MIT License.
 
 ---
 
-**Note**: Excel files (`.xlsx`, `.xls`) are excluded from version control via `.gitignore` to keep the repository clean and avoid storing large binary files. The `unprocessed/`, `processed/`, `unprocessed_XS/`, and `processed_XS/` directories are preserved for workflow structure. 
+**Note**: Excel files (`.xlsx`, `.xls`) are excluded from version control via `.gitignore` to keep the repository clean and avoid storing large binary files. The `unprocessed/` and `processed/` directories are preserved for workflow structure. 
