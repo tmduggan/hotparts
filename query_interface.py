@@ -9,6 +9,12 @@ import pandas as pd
 from database_manager import DatabaseManager
 from datetime import datetime
 import os
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 # Set up logging
 logging.basicConfig(
@@ -29,7 +35,8 @@ class QueryInterface:
         self.db_manager = DatabaseManager(db_path)
     
     def get_random_parts_list(self, count: int = 10, min_price: float = 10.0, 
-                            max_manufacturers: int = 5, output_file: str = None) -> pd.DataFrame:
+                            max_manufacturers: int = 5, output_file: str = None, 
+                            output_format: str = 'excel') -> pd.DataFrame:
         """Generate a random parts list based on criteria.
         
         Args:
@@ -37,6 +44,7 @@ class QueryInterface:
             min_price: Minimum target price
             max_manufacturers: Maximum number of manufacturers
             output_file: Optional file to save results
+            output_format: Output format ('excel', 'pdf', or 'both')
             
         Returns:
             DataFrame with random parts
@@ -76,9 +84,17 @@ class QueryInterface:
             # Save to file if requested
             if output_file:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"{output_file}_{timestamp}.xlsx"
-                df.to_excel(filename, index=False)
-                logger.info(f"Saved random parts list to: {filename}")
+                
+                if output_format in ['excel', 'both']:
+                    excel_filename = f"{output_file}_{timestamp}.xlsx"
+                    df.to_excel(excel_filename, index=False)
+                    logger.info(f"Saved random parts list to: {excel_filename}")
+                
+                if output_format in ['pdf', 'both']:
+                    pdf_filename = f"{output_file}_{timestamp}.pdf"
+                    title = f"Random Parts List - {count} Parts (Min Price: ${min_price})"
+                    self.export_to_pdf(df, pdf_filename, title)
+                    logger.info(f"Saved PDF report to: {pdf_filename}")
         
         return df
     
@@ -161,6 +177,155 @@ class QueryInterface:
         except Exception as e:
             logger.error(f"Query failed: {e}")
             print(f"Error: {e}")
+    
+    def export_to_pdf(self, df: pd.DataFrame, output_file: str, title: str = "Hot Parts Report"):
+        """Export DataFrame to a professional PDF table.
+        
+        Args:
+            df: DataFrame to export
+            output_file: Output PDF file path
+            title: Report title
+        """
+        try:
+            # Create PDF document
+            doc = SimpleDocTemplate(output_file, pagesize=letter)
+            story = []
+            
+            # Get styles
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+                alignment=TA_CENTER
+            )
+            
+            # Add title
+            story.append(Paragraph(title, title_style))
+            story.append(Spacer(1, 12))
+            
+            # Add timestamp
+            timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+            timestamp_style = ParagraphStyle(
+                'Timestamp',
+                parent=styles['Normal'],
+                fontSize=10,
+                alignment=TA_CENTER,
+                spaceAfter=20
+            )
+            story.append(Paragraph(f"Generated on {timestamp}", timestamp_style))
+            story.append(Spacer(1, 12))
+            
+            # Add summary statistics
+            if not df.empty:
+                total_parts = len(df)
+                unique_manufacturers = df['manufacturer'].nunique() if 'manufacturer' in df.columns else 0
+                total_qty = df['excess_qty'].sum() if 'excess_qty' in df.columns else 0
+                
+                # Calculate total value if target_price exists
+                total_value = 0
+                if 'target_price' in df.columns:
+                    for price in df['target_price']:
+                        if isinstance(price, str) and price.startswith('$'):
+                            try:
+                                total_value += float(price.replace('$', ''))
+                            except ValueError:
+                                pass
+                        elif isinstance(price, (int, float)):
+                            total_value += price
+                
+                summary_data = [
+                    ['Summary Statistics', ''],
+                    ['Total Parts', str(total_parts)],
+                    ['Unique Manufacturers', str(unique_manufacturers)],
+                    ['Total Quantity', f"{total_qty:,}"],
+                    ['Total Value', f"${total_value:,.2f}"]
+                ]
+                
+                summary_table = Table(summary_data, colWidths=[2*inch, 1.5*inch])
+                summary_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                story.append(summary_table)
+                story.append(Spacer(1, 20))
+            
+            # Prepare data for table
+            if not df.empty:
+                # Convert DataFrame to list of lists for ReportLab
+                data = [df.columns.tolist()]  # Header row
+                for _, row in df.iterrows():
+                    data.append(row.tolist())
+                
+                # Calculate column widths based on content
+                col_widths = []
+                for col in df.columns:
+                    max_width = len(str(col))  # Header width
+                    for value in df[col]:
+                        max_width = max(max_width, len(str(value)))
+                    # Set reasonable limits
+                    col_width = min(max_width * 0.15, 1.5) * inch
+                    col_widths.append(col_width)
+                
+                # Create table
+                table = Table(data, colWidths=col_widths)
+                
+                # Style the table
+                table.setStyle(TableStyle([
+                    # Header styling
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    
+                    # Data rows styling
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                    ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+                    
+                    # Grid styling
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+                    
+                    # Cell padding
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                
+                story.append(table)
+            else:
+                # No data message
+                no_data_style = ParagraphStyle(
+                    'NoData',
+                    parent=styles['Normal'],
+                    fontSize=12,
+                    alignment=TA_CENTER,
+                    spaceAfter=20
+                )
+                story.append(Paragraph("No data available for this report", no_data_style))
+            
+            # Build PDF
+            doc.build(story)
+            logger.info(f"PDF report generated: {output_file}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate PDF: {e}")
+            raise
 
 def main():
     """Main function for command-line interface."""
@@ -175,6 +340,8 @@ def main():
     random_parser.add_argument('--min-price', type=float, default=10.0, help='Minimum target price')
     random_parser.add_argument('--max-manufacturers', type=int, default=5, help='Maximum number of manufacturers')
     random_parser.add_argument('--output', help='Output file name (without extension)')
+    random_parser.add_argument('--format', choices=['excel', 'pdf', 'both'], default='excel', 
+                              help='Output format (default: excel)')
     
     # Stats command
     subparsers.add_parser('stats', help='Show database statistics')
@@ -205,7 +372,8 @@ def main():
             count=args.count,
             min_price=args.min_price,
             max_manufacturers=args.max_manufacturers,
-            output_file=args.output
+            output_file=args.output,
+            output_format=args.format
         )
         if not df.empty:
             print("\nRandom Parts List:")
