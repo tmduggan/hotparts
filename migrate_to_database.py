@@ -131,7 +131,7 @@ class ExcelToDatabaseMigrator:
             # Log processing
             self.db_manager.log_processing(
                 filename=excel_file,
-                file_type='excess',
+                file_type='matches',
                 status='success',
                 records_processed=len(records),
                 records_added=inserted,
@@ -147,10 +147,135 @@ class ExcelToDatabaseMigrator:
             # Log error
             self.db_manager.log_processing(
                 filename=excel_file,
-                file_type='excess',
+                file_type='matches',
                 status='error',
                 error_message=str(e)
             )
+            return 0
+    
+    def migrate_excess_inventory_data(self, processed_dir: str = "processed") -> int:
+        """Migrate excess inventory data from processed files to database.
+        
+        Args:
+            processed_dir: Directory containing processed excess files
+            
+        Returns:
+            Number of records migrated
+        """
+        if not os.path.exists(processed_dir):
+            logger.warning(f"Processed directory not found: {processed_dir}")
+            return 0
+        
+        try:
+            logger.info(f"Migrating excess inventory data from: {processed_dir}")
+            
+            # Find excess files (files that don't contain 'Weekly Hot Parts')
+            excess_files = []
+            for file in os.listdir(processed_dir):
+                if (file.endswith('.xlsx') and 
+                    'Weekly Hot Parts' not in file and
+                    not file.endswith('_ERROR.xlsx') and
+                    not file.startswith('duplicate_') and
+                    not file.startswith('test_')):
+                    excess_files.append(os.path.join(processed_dir, file))
+            
+            if not excess_files:
+                logger.info("No excess files found for migration")
+                return 0
+            
+            logger.info(f"Found {len(excess_files)} excess files to migrate")
+            
+            total_migrated = 0
+            
+            # Import the excess processor to parse files
+            from enhanced_excess_processor import EnhancedExcessProcessor
+            
+            excess_processor = EnhancedExcessProcessor()
+            
+            for file_path in excess_files:
+                try:
+                    logger.info(f"Processing excess file: {os.path.basename(file_path)}")
+                    
+                    # Find the relevant sheet
+                    sheet_name, df = excess_processor.find_relevant_sheet(file_path)
+                    if sheet_name is None:
+                        logger.warning(f"No relevant sheet found in {file_path}")
+                        continue
+                    
+                    # Find MPN, QTY, and Price columns
+                    mpn_cols = [col for col in df.columns if 'mpn' in str(col).lower()]
+                    qty_col = excess_processor.find_qty_column(df)
+                    price_col = excess_processor.find_price_column(df)
+                    
+                    if not mpn_cols:
+                        logger.warning(f"No MPN column found in {file_path}")
+                        continue
+                    
+                    mpn_col = mpn_cols[0]
+                    
+                    # Convert DataFrame to list of dictionaries
+                    records = []
+                    for idx, row in df.iterrows():
+                        mpn_value = row[mpn_col]
+                        
+                        if pd.isna(mpn_value) or str(mpn_value).strip() == '':
+                            continue
+                        
+                        # Clean MPN value
+                        mpn_clean = str(mpn_value).strip()
+                        
+                        # Get quantity value
+                        qty_value = 0
+                        if qty_col:
+                            qty_value = excess_processor.clean_qty_value(row[qty_col])
+                        
+                        # Get target price value (with 12% markup)
+                        target_price = None
+                        if price_col:
+                            target_price = excess_processor.clean_price_value(row[price_col])
+                        
+                        record = {
+                            'MPN': mpn_clean,
+                            'Excess_Filename': os.path.basename(file_path),
+                            'Excess_QTY': qty_value,
+                            'Target_Price': target_price,
+                            'Manufacturer': '',  # Could be extracted if available
+                            'sheet_name': sheet_name
+                        }
+                        records.append(record)
+                    
+                    # Insert into database
+                    inserted = self.db_manager.insert_excess_inventory(records)
+                    total_migrated += inserted
+                    
+                    # Log processing
+                    self.db_manager.log_processing(
+                        filename=os.path.basename(file_path),
+                        file_type='excess',
+                        status='success',
+                        records_processed=len(records),
+                        records_added=inserted,
+                        records_skipped=len(records) - inserted
+                    )
+                    
+                    logger.info(f"Migrated {inserted} records from {os.path.basename(file_path)}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to migrate excess file {file_path}: {e}")
+                    
+                    # Log error
+                    self.db_manager.log_processing(
+                        filename=os.path.basename(file_path),
+                        file_type='excess',
+                        status='error',
+                        error_message=str(e)
+                    )
+            
+            logger.info(f"Successfully migrated {total_migrated} total excess inventory records")
+            return total_migrated
+            
+        except Exception as e:
+            logger.error(f"Failed to migrate excess inventory data: {e}")
             return 0
     
     def migrate_all_data(self) -> dict:
@@ -161,6 +286,7 @@ class ExcelToDatabaseMigrator:
         """
         results = {
             'hot_parts_migrated': 0,
+            'excess_migrated': 0,
             'matches_migrated': 0,
             'total_migrated': 0
         }
@@ -170,11 +296,16 @@ class ExcelToDatabaseMigrator:
         # Migrate hot parts data
         results['hot_parts_migrated'] = self.migrate_hot_parts_data()
         
+        # Migrate excess inventory data
+        results['excess_migrated'] = self.migrate_excess_inventory_data()
+        
         # Migrate matches data
         results['matches_migrated'] = self.migrate_matches_data()
         
         # Calculate total
-        results['total_migrated'] = results['hot_parts_migrated'] + results['matches_migrated']
+        results['total_migrated'] = (results['hot_parts_migrated'] + 
+                                   results['excess_migrated'] + 
+                                   results['matches_migrated'])
         
         logger.info(f"Migration completed: {results['total_migrated']} total records migrated")
         
@@ -198,6 +329,11 @@ class ExcelToDatabaseMigrator:
             else:
                 print("❌ Hot Parts: No records found")
             
+            if stats['excess_inventory_count'] > 0:
+                print(f"✅ Excess Inventory: {stats['excess_inventory_count']} records")
+            else:
+                print("❌ Excess Inventory: No records found")
+            
             if stats['matches_count'] > 0:
                 print(f"✅ Matches: {stats['matches_count']} records")
             else:
@@ -208,6 +344,11 @@ class ExcelToDatabaseMigrator:
             else:
                 print("❌ Unique Hot Parts MPNs: No data")
             
+            if stats['unique_excess_mpns'] > 0:
+                print(f"✅ Unique Excess MPNs: {stats['unique_excess_mpns']}")
+            else:
+                print("❌ Unique Excess MPNs: No data")
+            
             if stats['unique_match_mpns'] > 0:
                 print(f"✅ Unique Match MPNs: {stats['unique_match_mpns']}")
             else:
@@ -217,7 +358,7 @@ class ExcelToDatabaseMigrator:
             print("="*50)
             
             # Check if we have meaningful data
-            return (stats['hot_parts_count'] > 0 or stats['matches_count'] > 0)
+            return (stats['hot_parts_count'] > 0 or stats['excess_inventory_count'] > 0 or stats['matches_count'] > 0)
             
         except Exception as e:
             logger.error(f"Verification failed: {e}")
@@ -246,6 +387,7 @@ def main():
     print("MIGRATION RESULTS")
     print("="*50)
     print(f"Hot Parts Records: {results['hot_parts_migrated']}")
+    print(f"Excess Inventory Records: {results['excess_migrated']}")
     print(f"Matches Records: {results['matches_migrated']}")
     print(f"Total Records: {results['total_migrated']}")
     print("="*50)

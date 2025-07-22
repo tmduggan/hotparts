@@ -212,7 +212,7 @@ python batch_processor.py [input_dir] [output_dir]
 
 ### Database Operations
 ```bash
-# Migrate Excel data to database
+# Migrate Excel data to database (includes both hot parts and excess inventory)
 python migrate_to_database.py --verify
 
 # Generate random parts list
@@ -224,8 +224,17 @@ python query_interface.py stats
 # Export database to Excel
 python query_interface.py export
 
-# Custom SQL query
+# Query hot parts data
+python query_interface.py query "SELECT * FROM hot_parts WHERE manufacturer = 'Texas Instruments'"
+
+# Query excess inventory data
+python query_interface.py query "SELECT * FROM excess_inventory WHERE target_price > 50.0"
+
+# Query matches between hot parts and excess
 python query_interface.py query "SELECT * FROM matches WHERE target_price > 50.0"
+
+# Find high-value excess inventory
+python query_interface.py query "SELECT mpn, excess_qty, target_price FROM excess_inventory WHERE target_price > 100.0 ORDER BY target_price DESC"
 ```
 
 ## 📝 Logging

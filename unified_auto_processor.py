@@ -196,7 +196,7 @@ class UnifiedFileHandler(FileSystemEventHandler):
             self.processing_files.discard(filename)
     
     def process_hot_parts_file(self, file_path, filename):
-        """Process hot parts file with duplicate detection"""
+        """Process hot parts file with duplicate detection and database storage"""
         # Load existing master files
         self.load_existing_master_files()
         
@@ -235,6 +235,9 @@ class UnifiedFileHandler(FileSystemEventHandler):
             # Replace parser data with deduplicated data
             self.hot_parts_parser.pivot_data = new_pivot_data
         
+        # Save hot parts data to database
+        self.save_hot_parts_to_database(filename)
+        
         # Move file to processed directory
         processed_path = os.path.join(self.processed_dir, filename)
         shutil.move(file_path, processed_path)
@@ -244,11 +247,60 @@ class UnifiedFileHandler(FileSystemEventHandler):
         # Update master files
         self.update_hot_parts_master_files()
     
+    def save_hot_parts_to_database(self, filename):
+        """Save hot parts data to database"""
+        try:
+            from database_manager import DatabaseManager
+            
+            # Initialize database manager
+            db_manager = DatabaseManager()
+            
+            # Convert parser data to database format
+            records = []
+            
+            # Process master data
+            if self.hot_parts_parser.master_data:
+                for chunk in self.hot_parts_parser.master_data:
+                    for _, row in chunk.iterrows():
+                        record = {
+                            'MPN': str(row.get('MPN', '')),
+                            'Date': str(row.get('Date', '')),
+                            'Reqs_Count': int(row.get('Reqs_Count', 0)) if pd.notna(row.get('Reqs_Count')) else 0,
+                            'Manufacturer': str(row.get('Manufacturer', '')),
+                            'Product_Class': str(row.get('Product_Class', '')),
+                            'Description': str(row.get('Description', '')),
+                            'source_file': filename
+                        }
+                        records.append(record)
+            
+            # Insert into database
+            if records:
+                inserted = db_manager.insert_hot_parts(records)
+                
+                # Log processing
+                db_manager.log_processing(
+                    filename=filename,
+                    file_type='hot_parts',
+                    status='success',
+                    records_processed=len(records),
+                    records_added=inserted,
+                    records_skipped=len(records) - inserted
+                )
+                
+                logger.info(f"Saved {inserted} hot parts records to database from {filename}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save hot parts data to database: {e}")
+            # Don't raise - this is not critical for file processing
+    
     def process_excess_file(self, file_path, filename):
-        """Process excess file with simplified validation"""
+        """Process excess file with simplified validation and database storage"""
         try:
             # Process the excess file
             self.excess_processor.process_excess_file(file_path)
+            
+            # Save excess data to database
+            self.save_excess_to_database(file_path, filename)
             
             # Move file to processed directory
             processed_path = os.path.join(self.processed_dir, filename)
@@ -259,6 +311,81 @@ class UnifiedFileHandler(FileSystemEventHandler):
         except Exception as e:
             # Re-raise to be handled by the main error handler
             raise e
+    
+    def save_excess_to_database(self, file_path, filename):
+        """Save excess inventory data to database"""
+        try:
+            from database_manager import DatabaseManager
+            
+            # Initialize database manager
+            db_manager = DatabaseManager()
+            
+            # Find the relevant sheet
+            sheet_name, df = self.excess_processor.find_relevant_sheet(file_path)
+            if sheet_name is None:
+                logger.warning(f"No relevant sheet found in {file_path}")
+                return
+            
+            # Find MPN, QTY, and Price columns
+            mpn_cols = [col for col in df.columns if 'mpn' in str(col).lower()]
+            qty_col = self.excess_processor.find_qty_column(df)
+            price_col = self.excess_processor.find_price_column(df)
+            
+            if not mpn_cols:
+                logger.warning(f"No MPN column found in {file_path}")
+                return
+            
+            mpn_col = mpn_cols[0]
+            
+            # Convert DataFrame to list of dictionaries
+            records = []
+            for idx, row in df.iterrows():
+                mpn_value = row[mpn_col]
+                
+                if pd.isna(mpn_value) or str(mpn_value).strip() == '':
+                    continue
+                
+                # Clean MPN value
+                mpn_clean = str(mpn_value).strip()
+                
+                # Get quantity value
+                qty_value = 0
+                if qty_col:
+                    qty_value = self.excess_processor.clean_qty_value(row[qty_col])
+                
+                # Get target price value (with 12% markup)
+                target_price = None
+                if price_col:
+                    target_price = self.excess_processor.clean_price_value(row[price_col])
+                
+                record = {
+                    'MPN': mpn_clean,
+                    'Excess_Filename': filename,
+                    'Excess_QTY': qty_value,
+                    'Target_Price': target_price,
+                    'Manufacturer': '',  # Could be extracted if available
+                    'sheet_name': sheet_name
+                }
+                records.append(record)
+            
+            # Insert into database
+            inserted = db_manager.insert_excess_inventory(records)
+            
+            # Log processing
+            db_manager.log_processing(
+                filename=filename,
+                file_type='excess',
+                status='success',
+                records_processed=len(records),
+                records_added=inserted,
+                records_skipped=len(records) - inserted
+            )
+            
+            logger.info(f"Saved {inserted} excess records to database from {filename}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save excess data to database: {e}")
+            # Don't raise - this is not critical for file processing
     
     def update_hot_parts_master_files(self):
         """Update the hot parts master files with new data"""
